@@ -20,3 +20,8 @@ poetry.lock
 .pytest_cache/
 botpy.log
 tests/
+
+# Test files with sensitive data
+test_*.py
+*.txt
+*.json

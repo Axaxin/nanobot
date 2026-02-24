@@ -187,9 +187,9 @@ class AgentDefaults(Base):
     workspace: str = "~/.nanobot/workspace"
     model: str = "anthropic/claude-opus-4-5"
     max_tokens: int = 8192
-    temperature: float = 0.1
-    max_tool_iterations: int = 40
-    memory_window: int = 100
+    temperature: float = 0.7
+    max_tool_iterations: int = 20
+    memory_window: int = 50
 
 
 class AgentsConfig(Base):
@@ -274,6 +274,26 @@ class ToolsConfig(Base):
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
 
+class PreprocessorProviderConfig(Base):
+    """Preprocessor LLM provider configuration."""
+
+    api_key: str = ""
+    api_base: str = ""
+    model: str = "grok/grok-4-1-fast-non-reasoning"  # Default to fast model
+    client_type: str = "openai"  # "openai" or "anthropic"
+    max_tokens: int = 4000
+    temperature: float = 0.3
+
+
+class PreprocessorConfig(Base):
+    """Message preprocessor configuration."""
+
+    enabled: bool = False  # Enable/disable preprocessing
+    provider: PreprocessorProviderConfig = Field(default_factory=PreprocessorProviderConfig)
+    num_iterations: int = 1  # Number of review iterations
+    skip_review: bool = False  # Skip review step for faster processing
+
+
 class Config(BaseSettings):
     """Root configuration for nanobot."""
 
@@ -282,6 +302,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    preprocessor: PreprocessorConfig = Field(default_factory=PreprocessorConfig)
 
     @property
     def workspace_path(self) -> Path:
