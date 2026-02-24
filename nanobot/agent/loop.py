@@ -27,7 +27,7 @@ from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
-    from nanobot.config.schema import ChannelsConfig, ExecToolConfig
+    from nanobot.config.schema import ChannelsConfig, ExecToolConfig, PreprocessorConfig
     from nanobot.cron.service import CronService
 
 
@@ -60,11 +60,13 @@ class AgentLoop:
         session_manager: SessionManager | None = None,
         mcp_servers: dict | None = None,
         channels_config: ChannelsConfig | None = None,
+        preprocessor_config: PreprocessorConfig | None = None,
     ):
         from nanobot.config.schema import ExecToolConfig
         self.bus = bus
         self.channels_config = channels_config
         self.provider = provider
+        self.preprocessor_config = preprocessor_config
         self.workspace = workspace
         self.model = model or provider.get_default_model()
         self.max_iterations = max_iterations
@@ -384,12 +386,33 @@ class AgentLoop:
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
 
+        # Preprocess message if enabled
+        processed_message = msg.content
+        preprocessor_result = None
+        if self.preprocessor_config and self.preprocessor_config.enabled:
+            try:
+                from nanobot.preprocessor import preprocess_message
+                processed_message, preprocessor_result = await preprocess_message(
+                    message=msg.content,
+                    config=self.preprocessor_config,
+                )
+                if preprocessor_result:
+                    logger.info(
+                        "Preprocessed message: entropy={:.4f}, subjective={:.0%}, confidence={:.0%}",
+                        preprocessor_result.get("entropy", 0),
+                        preprocessor_result.get("subjective_ratio", 0),
+                        preprocessor_result.get("analysis_confidence", 0),
+                    )
+            except Exception as e:
+                logger.warning("Preprocessing failed, using original message: {}", e)
+
         history = session.get_history(max_messages=self.memory_window)
         initial_messages = self.context.build_messages(
             history=history,
-            current_message=msg.content,
+            current_message=processed_message,
             media=msg.media if msg.media else None,
             channel=msg.channel, chat_id=msg.chat_id,
+            preprocessor_result=preprocessor_result,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:

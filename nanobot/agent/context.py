@@ -129,6 +129,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         media: list[str] | None = None,
         channel: str | None = None,
         chat_id: str | None = None,
+        preprocessor_result: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Build the complete message list for an LLM call.
@@ -140,6 +141,7 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
             media: Optional list of local file paths for images/media.
             channel: Current channel (telegram, feishu, etc.).
             chat_id: Current chat/user ID.
+            preprocessor_result: Optional preprocessor analysis result.
 
         Returns:
             List of messages including system prompt.
@@ -150,6 +152,24 @@ Reply directly with text for conversations. Only use the 'message' tool to send 
         system_prompt = self.build_system_prompt(skill_names)
         if channel and chat_id:
             system_prompt += f"\n\n## Current Session\nChannel: {channel}\nChat ID: {chat_id}"
+
+        # Add preprocessor analysis context if available
+        if preprocessor_result:
+            entropy = preprocessor_result.get("entropy", 0)
+            subjective = preprocessor_result.get("subjective_ratio", 0)
+            confidence = preprocessor_result.get("confidence_score", 0)
+            bias = preprocessor_result.get("bias_score", 0)
+            system_prompt += (
+                f"\n\n## Message Analysis\n"
+                f"Entropy (complexity): {entropy:.2f}\n"
+                f"Subjective ratio: {subjective:.0%}\n"
+                f"Factual confidence: {confidence:.0%}\n"
+                f"Bias score: {bias:.0%}"
+            )
+            # Add high entropy warning
+            if entropy > 0.7:
+                system_prompt += "\n\nNote: This message has high entropy (complex/ambiguous). Consider asking clarifying questions."
+
         messages.append({"role": "system", "content": system_prompt})
 
         # History
