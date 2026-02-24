@@ -7,7 +7,7 @@ import json
 import re
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from loguru import logger
 
@@ -412,7 +412,6 @@ class AgentLoop:
             current_message=processed_message,
             media=msg.media if msg.media else None,
             channel=msg.channel, chat_id=msg.chat_id,
-            preprocessor_result=preprocessor_result,
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:

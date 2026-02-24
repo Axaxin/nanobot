@@ -127,14 +127,16 @@ The message analyzer (`nanobot/preprocessor/analyzer.py`) provides message prepr
 
 **Architecture**:
 - Uses Anthropic SDK or OpenAI SDK directly (bypasses LiteLLM)
-- 3 LLM calls: Analysis → Review → Report Generation
-- Supports both Anthropic and OpenAI-compatible endpoints (e.g., Zhipu Coding Plan)
+- 2 LLM calls: Analysis → Review
+- Supports both Anthropic and OpenAI-compatible endpoints
+- **Middleware Pattern**: Enhances user message only, does NOT modify system prompt (decoupled design)
+- **JSONL Storage**: Analysis results are saved to `~/.nanobot/workspace/preprocessor_logs.jsonl`
 
 **Usage**:
 ```python
-from nanobot.preprocessor.analyzer import MessageAnalyzer, analyze_message
+from nanobot.preprocessor.analyzer import MessageAnalyzer, analyze_message, preprocess_message
 
-# Create analyzer with Zhipu Coding Plan
+# Create analyzer
 analyzer = MessageAnalyzer(
     provider=provider,
     model="glm-5",
@@ -152,7 +154,7 @@ result = await analyze_message(
 )
 
 # Results include:
-# - subjective_ratio: 主观比例 (0.0-1.0)
+# - subjective_ratio: 主观比例 (0.0-1.0, capped at 1.0)
 # - objective_ratio: 客观比例 (0.0-1.0)
 # - confidence_score: 事实置信度 (0.0-1.0)
 # - bias_score: 偏见评分 (0.0-1.0)
@@ -160,6 +162,10 @@ result = await analyze_message(
 # - entropy: 熵值 (不确定性度量)
 # - confidence_level: high/medium/low
 # - report: 分析报告文本
+
+# Preprocess with message enhancement (used in agent loop)
+enhanced_message, result = await preprocess_message(message, config)
+# enhanced_message = original_message + "\n\n[分析摘要: 主观X%, 置信度X%, 偏见X%]"
 ```
 
 **Test Command**:

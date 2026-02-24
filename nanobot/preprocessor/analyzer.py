@@ -30,14 +30,19 @@ H = sigmoid(H_raw, k=4.0, center=0.75)  # sigmoid 归一化到 [0, 1]
 总计 2 次 LLM 调用 - 支持 Anthropic 和 OpenAI 兼容格式
 """
 
+from __future__ import annotations
+
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from anthropic import AsyncAnthropic
-from openai import AsyncOpenAI
 from loguru import logger
+from openai import AsyncOpenAI
 
 from nanobot.providers.base import LLMProvider
+
+if TYPE_CHECKING:
+    from nanobot.config.schema import PreprocessorConfig
 
 
 class MessageAnalyzer:
@@ -692,9 +697,9 @@ def calculate_metrics_from_lists(result: dict[str, Any], original_message: str) 
 
     # ========== 计算各项指标 ==========
 
-    # 1. 主客观比例 = 主观部分字数 / 原文总字数
+    # 1. 主客观比例 = 主观部分字数 / 原文总字数（上限 1.0）
     subj_chars = list_chars(validated_subjective)
-    subjective_ratio = subj_chars / total_chars if total_chars > 0 else 0.5
+    subjective_ratio = min(1.0, subj_chars / total_chars) if total_chars > 0 else 0.5
 
     # 2. 事实置信度 = 可验证陈述数 / 总句数
     verifiable_count = len(validated_verifiable)
@@ -952,7 +957,7 @@ async def analyze_message(
     return current_analysis
 
 
-def create_analyzer_from_config(config: "PreprocessorConfig") -> MessageAnalyzer | None:
+def create_analyzer_from_config(config: PreprocessorConfig) -> MessageAnalyzer | None:
     """
     从配置创建消息分析器
 
@@ -962,10 +967,6 @@ def create_analyzer_from_config(config: "PreprocessorConfig") -> MessageAnalyzer
     Returns:
         MessageAnalyzer 实例，如果配置无效则返回 None
     """
-    from typing import TYPE_CHECKING
-    if TYPE_CHECKING:
-        from nanobot.config.schema import PreprocessorConfig
-
     if not config.enabled:
         return None
 
@@ -987,7 +988,7 @@ def create_analyzer_from_config(config: "PreprocessorConfig") -> MessageAnalyzer
 
 async def preprocess_message(
     message: str,
-    config: "PreprocessorConfig"
+    config: PreprocessorConfig
 ) -> tuple[str, dict[str, Any] | None]:
     """
     预处理消息的便捷函数
@@ -999,10 +1000,6 @@ async def preprocess_message(
     Returns:
         (处理后的消息, 分析结果) - 如果预处理器未启用，返回原消息和 None
     """
-    from typing import TYPE_CHECKING
-    if TYPE_CHECKING:
-        from nanobot.config.schema import PreprocessorConfig
-
     analyzer = create_analyzer_from_config(config)
     if analyzer is None:
         return message, None
@@ -1015,6 +1012,9 @@ async def preprocess_message(
             skip_review=config.skip_review,
         )
 
+        # 保存分析结果到 JSONL 文件
+        save_analysis_result(message, result)
+
         # 构建增强后的消息（附加分析摘要）
         enhanced = f"{message}\n\n[分析摘要: 主观{result['subjective_ratio']:.0%}, 置信度{result['confidence_score']:.0%}, 偏见{result['bias_score']:.0%}]"
         return enhanced, result
@@ -1022,3 +1022,52 @@ async def preprocess_message(
     except Exception as e:
         logger.error(f"Message preprocessing failed: {e}")
         return message, None
+
+
+def save_analysis_result(message: str, result: dict[str, Any]) -> None:
+    """
+    保存分析结果到 JSONL 文件
+
+    存储位置: ~/.nanobot/workspace/preprocessor_logs.jsonl
+
+    Args:
+        message: 原始消息
+        result: 分析结果
+    """
+    from datetime import datetime
+    from pathlib import Path
+
+    try:
+        # 获取 workspace 路径
+        workspace = Path.home() / ".nanobot" / "workspace"
+        workspace.mkdir(parents=True, exist_ok=True)
+
+        log_file = workspace / "preprocessor_logs.jsonl"
+
+        # 构建存储记录
+        record = {
+            "timestamp": datetime.now().isoformat(),
+            "original_message": message,
+            "entropy": result.get("entropy"),
+            "coverage": result.get("coverage"),
+            "noise": result.get("noise"),
+            "subjective_ratio": result.get("subjective_ratio"),
+            "confidence_score": result.get("confidence_score"),
+            "bias_score": result.get("bias_score"),
+            "analysis_confidence": result.get("analysis_confidence"),
+            "topic_clarity": result.get("topic_clarity"),
+            "context_completeness": result.get("context_completeness"),
+            "requirement_clarity": result.get("requirement_clarity"),
+            "redundancy": result.get("redundancy"),
+            "ambiguity": result.get("ambiguity"),
+            "emotional_interference": result.get("emotional_interference"),
+        }
+
+        # 追加写入 JSONL
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        logger.debug(f"Analysis result saved to {log_file}")
+
+    except Exception as e:
+        logger.warning(f"Failed to save analysis result: {e}")
